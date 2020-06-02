@@ -1,0 +1,22 @@
+version: "3.7"
+services:
+  server:
+    build:
+      context: .
+    volumes:
+      - .:/go/src:cached
+    ports:
+      - 3004:3004
+      - 3005:3005
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /go/src/credential.json
+
+  client:
+    image: node:12
+    ports:
+      - 3003:3003
+    tty: true
+    volumes:
+      - ./client:/var/www:cached
+    working_dir: /var/www
+    command: yarn dev
