@@ -71,8 +71,8 @@ export default class Index extends Vue {
         let webSocketUri =
             scheme +
             window.location.hostname +
-            // ":3004" +
-            (location.port ? ":" + location.port : "") +
+            ":3004" +
+            // (location.port ? ":" + location.port : "") +
             `/speaker?id=${this.roomId}&name=${this.name}`;
         // `/speaker?id=${this.roomId}&name=${this.name}&username=${this.username}&password=${this.password}`;
 
