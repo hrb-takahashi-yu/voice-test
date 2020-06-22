@@ -1,0 +1,6 @@
+FROM google/cloud-sdk:alpine
+ADD ./scripts/firestore/start.sh /start.sh
+RUN apk update \
+    && apk --no-cache add openjdk8 \
+    && gcloud components update \
+    && gcloud components install beta cloud-firestore-emulator --quiet

@@ -1,28 +1,103 @@
 <template>
     <div class="container">
         <div>
-            <div class="result">{{res+tmp}}</div>
+            <!-- <div class="result">{{res+tmp}}</div> -->
+
+            <!-- <div class="links">
+                <span>username：</span>
+                <input type="text" name="username" size="30" v-model="username" />
+
+                <span>password：</span>
+                <input type="password" name="password" size="30" v-model="password" />
+            </div>-->
+
+            <div class="links">
+                <span>room ID：</span>
+                <input type="text" name="id" size="30" v-model="roomId" />
+
+                <span>name：</span>
+                <input type="text" name="name" size="30" v-model="name" />
+            </div>
+
+            <div class="links">
+                <a @click="createRoom" class="button--green">create room</a>
+            </div>
 
             <div class="links">
                 <a @click="start" class="button--green" :class="on?'on':''">start</a>
                 <a @click="stop" class="button--grey" :class="on?'':'off'">stop</a>
+            </div>
+
+            <div class="textarea">
+                <template v-for="(talk,index) in conversation">
+                    <template v-if="talk.text!==''">
+                        <div :key="index">{{talk.name}} : {{talk.text}}</div>
+                    </template>
+                </template>
             </div>
         </div>
     </div>
 </template>
 
 <script lang="ts">
+import axios from "axios";
 import { Component, Vue } from "vue-property-decorator";
+import Route from "vue-router/types/vue";
+
+type Room = {
+    roomId: string;
+};
 
 @Component
 export default class Index extends Vue {
     connection?: WebSocket;
+    streams: MediaStream[] = [];
 
     on = false;
 
-    res = "";
+    // res = "";
 
-    tmp = "";
+    // tmp = "";
+
+    roomId = "";
+    name = "";
+    username = "";
+    password = "";
+
+    conversation: { name: string; text: string; createdAt: string }[] = [];
+
+    get url(): string {
+        let scheme = window.location.protocol == "https:" ? "wss://" : "ws://";
+        let webSocketUri =
+            scheme +
+            window.location.hostname +
+            // ":3004" +
+            (location.port ? ":" + location.port : "") +
+            `/speaker?id=${this.roomId}&name=${this.name}`;
+        // `/speaker?id=${this.roomId}&name=${this.name}&username=${this.username}&password=${this.password}`;
+
+        return webSocketUri;
+        // return `ws://localhost:${port}/speaker?id=${this.roomId}&name=${this.name}&username=${this.username}&password=${this.password}`;
+    }
+
+    created() {
+        if (typeof this.$route.query.id === "string") {
+            this.roomId = this.$route.query.id;
+        }
+    }
+    // created() {
+    //     // this.connection = new WebSocket("ws://localhost:3005/speaker");
+    //     this.connection = new WebSocket(this.url);
+    //     // this.connection = new WebSocket("ws://192.168.3.19:3004/speaker");
+
+    //     this.connection.onmessage = async event => {
+    //         const text = await event.data.text();
+    //         console.log(text);
+    //         this.tmp = text;
+    //         this.conversation = JSON.parse(text);
+    //         console.log(this.conversation);
+    //     };
+    // }
 
     start() {
         this.on = true;
@@ -30,40 +105,59 @@ export default class Index extends Vue {
             return;
         }
         const handleSuccess = (stream: MediaStream) => {
-            console.log(stream);
+            this.streams.push(stream);
             const context = new AudioContext();
             const input = context.createMediaStreamSource(stream);
             const processor = context.createScriptProcessor(4096, 1, 1);
 
-            // this.connection = new WebSocket("ws://localhost:3005/speaker");
-            this.connection = new WebSocket("ws://localhost:3004/speaker");
+            this.connection = new WebSocket(this.url);
+            // this.connection = new WebSocket("ws://192.168.3.19:3004/speaker");
 
             this.connection.onmessage = async event => {
                 const text = await event.data.text();
-                console.log(text);
-                this.tmp = text;
+                // console.log(text);
+                // this.tmp = text;
+                try {
+                    // TODO: エラーハンドリングが雑
+                    this.conversation = JSON.parse(text);
+                } catch {
+                    processor.onaudioprocess = null;
+                    this.stop();
+                    alert(text);
+                }
+                console.log(this.conversation);
+            };
+
+            this.connection.onclose = event => {
+                console.log(event);
+                processor.onaudioprocess = null;
+                this.stop();
+                return;
             };
 
             input.connect(processor);
             processor.connect(context.destination);
 
-            processor.onaudioprocess = e => {
-                if (!this.connection) {
-                    processor.onaudioprocess = null;
-                    return;
-                }
+            this.connection.onopen = () => {
+                console.log("opened");
+                processor.onaudioprocess = e => {
+                    if (!this.connection) {
+                        processor.onaudioprocess = null;
+                        return;
+                    }
 
-                const voice = e.inputBuffer.getChannelData(0);
+                    const voice = e.inputBuffer.getChannelData(0);
 
-                // TODO: サンプルレートをどうするか
-                // フロントでdownRateする or サーバに送信して指定する
-                // console.log("sample rate:" + e.inputBuffer.sampleRate);
+                    // TODO: サンプルレートをどうするか
+                    // フロントでdownRateする or サーバに送信して指定する
+                    // console.log("sample rate:" + e.inputBuffer.sampleRate);
 
-                let buf = new ArrayBuffer(voice.length * 2);
-                let dv = new DataView(buf);
+                    let buf = new ArrayBuffer(voice.length * 2);
+                    let dv = new DataView(buf);
 
-                this.floatTo16BitPCM(dv, voice);
-                this.connection.send(buf);
+                    this.floatTo16BitPCM(dv, voice);
+                    this.connection.send(buf);
+                };
             };
         };
 
@@ -72,51 +166,6 @@ export default class Index extends Vue {
             // .getDisplayMedia({ audio: true, video: true })
             .then(handleSuccess);
     }
-
-    // startPc() {
-    //     const context = new AudioContext();
-    //     const osc = context.createOscillator();
-    //     const dest = context.createMediaStreamDestination();
-    //     osc.connect(dest);
-    //     const stream = dest.stream;
-
-    //     const input = context.createMediaStreamSource(stream);
-    //     const processor = context.createScriptProcessor(4096, 1, 1);
-
-    //     this.connection = new WebSocket("ws://localhost:3004/speaker");
-
-    //     this.connection.onmessage = async event => {
-    //         const text = await event.data.text();
-    //         console.log(text);
-    //     };
-
-    //     input.connect(processor);
-    //     processor.connect(context.destination);
-
-    //     processor.onaudioprocess = e => {
-    //         if (!this.connection) {
-    //             processor.onaudioprocess = null;
-    //             return;
-    //         }
-
-    //         // const voice = this.downRate(
-    //         //     e.inputBuffer.getChannelData(0),
-    //         //     e.inputBuffer.sampleRate,
-    //         //     8000
-    //         // );
-    //         const voice = e.inputBuffer.getChannelData(0);
-
-    //         // TODO: サンプルレートをどうするか
-    //         // フロントでdownRateする or サーバに送信して指定する
-    //         console.log("sample rate:" + e.inputBuffer.sampleRate);
-
-    //         let buf = new ArrayBuffer(voice.length * 2);
-    //         let dv = new DataView(buf);
-
-    //         this.floatTo16BitPCM(dv, voice);
-    //         this.connection.send(buf);
-    //     };
-    // }
 
     floatTo16BitPCM(output: DataView, input: Float32Array) {
         let offset = 0;
@@ -159,21 +208,45 @@ export default class Index extends Vue {
         if (!this.connection) {
             return;
         }
-        this.res = this.res + this.tmp;
-        this.tmp = "";
+        // this.res = this.res + this.tmp;
+        // this.tmp = "";
         this.connection.close();
         this.connection = undefined;
+        this.streams.forEach(stream =>
+            stream.getTracks().forEach(track => track.stop())
+        );
+        this.streams = [];
+    }
+
+    async createRoom() {
+        let room: Room = { roomId: "" };
+        try {
+            const { data } = await axios.post("/room");
+            // const { data } = await axios.post(
+            //     `/room?username=${this.username}&password=${this.password}`
+            // );
+            room = data;
+        } catch (error) {
+            alert(error);
+            return;
+        }
+        alert(
+            `${window.location.protocol}//${window.location.hostname}${
+                location.port ? ":" + location.port : ""
+            }?id=${room.roomId}`
+        );
+        this.roomId = room.roomId;
     }
 }
 </script>
 
 <style>
 .container {
-    margin: 0 auto;
+    margin: 30px auto 0;
     min-height: 100vh;
     display: flex;
     justify-content: center;
-    align-items: center;
+    /* align-items: center; */
     text-align: center;
 }
 
@@ -211,5 +284,10 @@ export default class Index extends Vue {
 }
 .result {
     white-space: pre-wrap;
+}
+
+.textarea {
+    padding: 0 20px;
+    text-align: left;
 }
 </style>

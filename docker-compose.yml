@@ -3,13 +3,19 @@ services:
   server:
     build:
       context: .
+      dockerfile: Dockerfile-dev
     volumes:
       - .:/go/src:cached
     ports:
       - 3004:3004
-      - 3005:3005
     environment:
       GOOGLE_APPLICATION_CREDENTIALS: /go/src/credential.json
+      FIRESTORE_EMULATOR_HOST: my_firestore:8812
+      PROJECT_ID: project-id
+      HOST: 0.0.0.0
+      PORT: 3004
+      AUTH_USER: username
+      AUTH_PASSWORD: alB8wOshgLBH0UnljhvLU
 
   client:
     image: node:12
@@ -20,3 +26,25 @@ services:
       - ./client:/var/www:cached
     working_dir: /var/www
     command: yarn dev
+
+  my_firestore:
+    build:
+      context: .
+      dockerfile: Dockerfile-firestore
+    environment:
+      PROJECT_ID: project-id
+    command: /bin/bash /start.sh
+    volumes:
+      - ./firestore:/firestore
+    container_name:
+      voice-test-firestore
+
+  my_firestore_viewer:
+    ports:
+      - 3006:3000
+    image: yutakahashi114/firestore-local-emulator-viewer
+    environment:
+      FIRESTORE_EMULATOR_HOST: voice-test-firestore:8812
+      PROJECT_ID: project-id
+    depends_on:
+      - my_firestore
